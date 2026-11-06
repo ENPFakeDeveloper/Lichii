@@ -20,4 +20,15 @@ inline bool BuildsUnoptimized(VkDriverId driver_id, u64 shader_hash) {
            std::ranges::find(amd_proprietary, shader_hash) != amd_proprietary.end();
 }
 
+/// Graphics stages whose pipelines took 12 to 17 s inside AMD's optimizer in one Ocarina of Time
+/// session (RX 6650 XT, driver 2.0.353). Any pipeline that contains one is built unoptimized.
+inline bool BuildsGraphicsUnoptimized(VkDriverId driver_id, u64 stage_hash) {
+    static constexpr std::array<u64, 6> amd_proprietary{
+        0xf16638b51d8e93acULL, 0x2a36b86df54c3078ULL, 0x22f53780925c9fdcULL,
+        0x91f539a6c54c97dbULL, 0x41a89b6df7ab4188ULL, 0xc4a9495a97b2ae03ULL,
+    };
+    return driver_id == VK_DRIVER_ID_AMD_PROPRIETARY &&
+           std::ranges::find(amd_proprietary, stage_hash) != amd_proprietary.end();
+}
+
 } // namespace Vulkan
