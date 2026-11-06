@@ -79,8 +79,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-x86_64
-            runner: windows-2022
           - platform: windows-x86_64-pgo
             runner: windows-2022
             pgo: true
