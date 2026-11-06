@@ -16,6 +16,7 @@
 
 #include "video_core/renderer_vulkan/pipeline_build_trace.h"
 #include "video_core/renderer_vulkan/pipeline_helper.h"
+#include "video_core/renderer_vulkan/pipeline_optimization.h"
 
 #include "common/bit_field.h"
 #include "common/scope_exit.h"
@@ -1249,6 +1250,11 @@ void GraphicsPipeline::MakePipeline(VkRenderPass render_pass) {
     }
     if (uses_descriptor_buffer) {
         flags |= VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+    }
+    if (std::ranges::any_of(key.unique_hashes, [this](u64 hash) {
+            return hash != 0 && BuildsGraphicsUnoptimized(device.GetDriverID(), hash);
+        })) {
+        flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
     }
 
     const bool unoptimized = (flags & VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT) != 0;
