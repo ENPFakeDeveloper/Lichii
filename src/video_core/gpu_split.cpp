@@ -142,6 +142,7 @@ void GpuSplit::Stop() {
     last_writer_position = 0;
     pending_write_count = 0;
     async_writes.clear();
+    fence_writes.clear();
     report_pages.clear();
     last_sync_position = 0;
     published_local = 0;
@@ -221,8 +222,8 @@ void GpuSplit::Drain(DrainSite site) {
     }
 }
 
-bool GpuSplit::WaitForWriters() {
-    return WaitFor(std::min(last_writer_position, write_position), DrainSite::ListWriters);
+bool GpuSplit::WaitForWriters(DrainSite site) {
+    return WaitFor(std::min(last_writer_position, write_position), site);
 }
 
 bool GpuSplit::WaitForWritesTo(u64 begin, u64 size) {
@@ -248,23 +249,6 @@ bool GpuSplit::WaitForWritesTo(u64 begin, u64 size) {
         WaitFor(target, DrainSite::MacroDmaRead);
     }
     return true;
-}
-
-bool GpuSplit::HasQueuedWritesTo(u64 begin, u64 size) {
-    consumed_cache = consumed.load(std::memory_order_acquire);
-    const u64 end = begin + size;
-    const u64 remembered = (std::min<u64>)(pending_write_count, pending_writes.size());
-    for (u64 scanned = 0; scanned < remembered; ++scanned) {
-        const PendingWrite& write =
-            pending_writes[(pending_write_count - 1 - scanned) % pending_writes.size()];
-        if (write.position <= consumed_cache) {
-            return false;
-        }
-        if (write.begin < end && begin < write.end) {
-            return true;
-        }
-    }
-    return remembered == pending_writes.size();
 }
 
 bool GpuSplit::OverlayQueuedWrites(u64 since, u64 begin, u32* out, u32 words) {

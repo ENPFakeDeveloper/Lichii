@@ -71,7 +71,6 @@ inline void Nx2MarkCommandListPage(u64 device_address) {
     return (g_nx2_command_list_pages[page / 64].load(std::memory_order_relaxed) >> (page % 64)) & 1;
 }
 
-/// A new emulation session starts: no page has been written by its GPU yet.
 // Query results written when their host work completes (counter reports): per 16-byte slot
 // hash, how many the back issued and how many completed. Equal counts mean the words in memory
 // are final, so the split's front can read them without draining the back.
@@ -94,6 +93,7 @@ inline std::array<std::atomic<u32>, Nx2AsyncReportSlots> g_nx2_async_reports_com
     return true;
 }
 
+/// A new emulation session starts: no page has been written by its GPU yet.
 inline void Nx2ClearGpuWrittenPages() {
     for (auto& word : g_nx2_gpu_written_pages) {
         word.store(0, std::memory_order_relaxed);

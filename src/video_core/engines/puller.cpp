@@ -375,8 +375,7 @@ static void NoteSemaphoreWrite(DmaPusher& dma_pusher, GPUVAddr address,
     if (!device) {
         return; // Queries write nothing at an unmapped address.
     } else if (fence_payload) {
-        split.NoteMemoryWriteData(*device, &*fence_payload, 1);
-        split.NoteReportWrite(*device, 4);
+        split.NoteFenceWrite(*device, *fence_payload);
     } else {
         // Written when its fence is signalled: reads wait until the back ran it and it was.
         split.NoteAsyncWrite(*device, 16);

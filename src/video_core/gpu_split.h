@@ -167,7 +167,7 @@ public:
     }
     /// Waits until the back executed the compute and copy work sent so far (not what came after).
     /// Returns whether any of it was still queued.
-    bool WaitForWriters();
+    bool WaitForWriters(DrainSite site = DrainSite::ListWriters);
     /// Work that writes the device range [begin, begin + size) was just sent (an inline upload, a
     /// report, a semaphore release). size ~0 means an unknown range.
     void NoteMemoryWrite(u64 begin, u64 size, const char* what = "unknown") {
@@ -206,9 +206,6 @@ public:
     /// Waits until the back executed the noted writes that overlap [begin, begin + size).
     /// Returns false when more writes are queued than are remembered (the caller drains).
     bool WaitForWritesTo(u64 begin, u64 size);
-    /// Whether a noted write that overlaps [begin, begin + size) is still queued (or too many
-    /// are queued to tell).
-    bool HasQueuedWritesTo(u64 begin, u64 size);
     /// Front: a write that lands when a host query completes or a fence signals (counter
     /// reports, timed releases), not when the back runs it (Tegra::Nx2AsyncReportsSettled).
     void NoteAsyncWrite(u64 begin, u64 size) {
@@ -216,6 +213,14 @@ public:
         for (u64 slot = begin >> 4; slot <= (begin + size - 1) >> 4; ++slot) {
             async_writes[slot] = write_position;
         }
+    }
+    /// Front: a fence release with a known payload. Below GPU accuracy High the query cache writes
+    /// it when its host fence signals, after the back ran it: reads overlay the payload while it
+    /// is queued, and wait for the fence once the back ran it (Tegra::Nx2AsyncReportsSettled).
+    void NoteFenceWrite(u64 begin, u32 payload) {
+        NoteMemoryWriteData(begin, &payload, 1);
+        NoteReportWrite(begin, 4);
+        fence_writes[begin >> 4] = write_position;
     }
     /// Front: whether these bytes lie on 4 KiB pages reports or semaphore releases write (query
     /// and semaphore pools), which draws and dispatches don't write.
@@ -235,16 +240,11 @@ public:
     }
     /// Front: the ring position of the newest async write noted to these bytes, or 0.
     [[nodiscard]] u64 HasAsyncWrite(u64 begin, u64 size) const {
-        u64 newest = 0;
-        if (async_writes.empty()) {
-            return newest;
-        }
-        for (u64 slot = begin >> 4; slot <= (begin + size - 1) >> 4; ++slot) {
-            if (const auto it = async_writes.find(slot); it != async_writes.end()) {
-                newest = (std::max)(newest, it->second);
-            }
-        }
-        return newest;
+        return Newest(async_writes, begin, size);
+    }
+    /// Front: the ring position of the newest fence release noted to these bytes, or 0.
+    [[nodiscard]] u64 HasFenceWrite(u64 begin, u64 size) const {
+        return Newest(fence_writes, begin, size);
     }
 
     /// A host-level wait was just sent (a syncpoint acquire, a host WFI, a GP entry with its sync
@@ -272,6 +272,19 @@ private:
     static constexpr u64 Direct = 1 << 6; ///< Method: call it even if not executable (macros)
 
     std::unordered_map<u64, u64> async_writes; ///< Front: 16-byte slot -> ring position
+    std::unordered_map<u64, u64> fence_writes; ///< Front: 16-byte slot -> ring position
+    [[nodiscard]] static u64 Newest(const decltype(async_writes)& writes, u64 begin, u64 size) {
+        u64 newest = 0;
+        if (writes.empty()) {
+            return newest;
+        }
+        for (u64 slot = begin >> 4; slot <= (begin + size - 1) >> 4; ++slot) {
+            if (const auto it = writes.find(slot); it != writes.end()) {
+                newest = (std::max)(newest, it->second);
+            }
+        }
+        return newest;
+    }
     std::unordered_set<u64> report_pages;      ///< Front: 4 KiB pages reports and releases wrote
 
     static constexpr size_t RingWords = size_t{1} << 20; // 8 MiB

@@ -1377,9 +1377,7 @@ void Maxwell3D::FrontNoteMemoryWrite(VideoCommon::GpuSplit& split, FrontState& f
         if (query_regs.query.operation == Regs::ReportSemaphore::Operation::Release &&
             query_regs.query.short_query != 0 &&
             query_regs.query.report == Regs::ReportSemaphore::Report::Payload) {
-            const u32 payload = fs.regs[base + 2];
-            split.NoteMemoryWriteData(*device, &payload, 1);
-            split.NoteReportWrite(*device, 4);
+            split.NoteFenceWrite(*device, fs.regs[base + 2]);
         } else {
             // Counters and timed releases are written when the host query completes, not when
             // the back runs them: reads of these bytes wait until the back ran the report and
@@ -1455,6 +1453,9 @@ bool Maxwell3D::FrontDmaReadQueued(VideoCommon::GpuSplit& split, FrontState& fs,
     if (!device || !split.IsReportMemory(*device, read_bytes)) {
         return false;
     }
+    // Queued compute and copy work can write any page, and the back marks the pages GPU-written
+    // only once it runs it.
+    split.WaitForWriters(VideoCommon::DrainSite::MacroDmaRead);
     // Every page where a contiguous device range puts it: the queued-write checks look at
     // [*device, *device + read_bytes).
     for (GPUVAddr page = source & ~GPUVAddr{0xfff}; page < source + read_bytes; page += 0x1000) {
@@ -1473,6 +1474,13 @@ bool Maxwell3D::FrontDmaReadQueued(VideoCommon::GpuSplit& split, FrontState& fs,
     thread_local std::vector<u32> fast;
     fast.resize(words);
     const u64 since = split.ConsumedNow();
+    // A fence release the back already ran lands when its host fence signals; one still queued
+    // is overlaid below.
+    if (const u64 fence_position = split.HasFenceWrite(*device, read_bytes);
+        fence_position != 0 && fence_position <= since &&
+        !Tegra::Nx2AsyncReportsSettled(*device, read_bytes)) {
+        return false;
+    }
     memory_manager.ReadBlockUnsafe(source, fast.data(), read_bytes);
     if (!split.OverlayQueuedWrites(since, *device, fast.data(), words)) {
         if (!split.WaitForWritesTo(*device, read_bytes)) {
