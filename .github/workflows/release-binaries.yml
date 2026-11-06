@@ -81,10 +81,6 @@ jobs:
         include:
           - platform: windows-x86_64
             runner: windows-2022
-          - platform: windows-x86_64-pgo
-            runner: windows-2022
-            pgo: true
-            mingw: true
 
     steps:
       - name: Check out source
