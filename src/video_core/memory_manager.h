@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <map>
 #include <memory>
@@ -277,6 +278,7 @@ private:
     /// Bumped after each page table change; readers keep their MappingSnapshot until then.
     std::atomic<u64> map_serial{};
 
+<<<<<<< HEAD
     struct ContinuousRun {
         GPUVAddr end;
         DAddr device_addr;
@@ -287,6 +289,20 @@ private:
     mutable std::shared_ptr<const MappingSnapshot> snapshot;
     mutable u64 snapshot_serial{};
     mutable std::mutex runs_guard;
+=======
+    /// The ranges of the last page table changes, by serial: a MaxContinuousRange run survives
+    /// changes elsewhere (Ocarina changes the page table ~100 times a second).
+    struct MapChange {
+        std::atomic<u64> serial{};
+        std::atomic<GPUVAddr> begin{};
+        std::atomic<GPUVAddr> end{};
+    };
+    static constexpr size_t MapChangeCount = 64;
+    std::array<MapChange, MapChangeCount> map_changes{};
+    void BumpMapSerial(GPUVAddr begin, size_t size);
+    /// Whether no page table change after `since` up to `now` touched [begin, end).
+    [[nodiscard]] bool UnchangedSince(u64 since, u64 now, GPUVAddr begin, GPUVAddr end) const;
+>>>>>>> pr179
 
     static constexpr size_t continuous_bits = 64;
 

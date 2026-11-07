@@ -63,7 +63,10 @@
 #include "video_core/vulkan_common/vulkan_device.h"
 #include "video_core/vulkan_common/vulkan_wrapper.h"
 #include "video_core/memory_manager.h"
+<<<<<<< HEAD
 #include "video_core/nx2.h"
+=======
+>>>>>>> pr179
 #include "video_core/nx2_debug_control.h"
 #include "video_core/nx2_profile.h"
 
@@ -1417,6 +1420,7 @@ void RasterizerVulkan::DispatchCompute() {
 
     const auto& qmd{kepler_compute->launch_description};
     auto indirect_address = kepler_compute->GetIndirectComputeAddress();
+<<<<<<< HEAD
     // Earlier writes must be visible to the dispatch, its indirect arguments included, and what it
     // writes to the next render pass.
     const auto record_read_barrier = [this] {
@@ -1434,6 +1438,8 @@ void RasterizerVulkan::DispatchCompute() {
         });
         scheduler.NoteComputeWrites();
     };
+=======
+>>>>>>> pr179
     if (frame_dump.CapturingBuffers()) {
         std::optional<std::array<u32, 3>> indirect_grid;
         if (indirect_address) {

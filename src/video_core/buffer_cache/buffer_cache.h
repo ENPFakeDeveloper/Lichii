@@ -282,8 +282,21 @@ std::optional<VideoCore::RasterizerDownloadArea> BufferCache<P>::GetFlushArea(DA
     area->preemtive = !IsRegionGpuModified(device_addr_start_aligned,
                                            device_addr_end_aligned - device_addr_start_aligned);
     // A preflushable mark persists and downloads later GPU writes at every fence. Native titles
+<<<<<<< HEAD
     // instead keep read traps and flush on demand.
     const bool preflush = !Tegra::g_nx2_ampere.load(std::memory_order_relaxed);
+=======
+    // instead keep read traps and flush on demand; EDEN_NX2_PREFLUSH=1 restores preflushing.
+    static const std::optional<bool> forced_preflush = []() -> std::optional<bool> {
+        const char* value = std::getenv("EDEN_NX2_PREFLUSH");
+        if (value != nullptr) {
+            return value[0] != '0';
+        }
+        return std::nullopt;
+    }();
+    const bool preflush =
+        forced_preflush.value_or(!Tegra::g_nx2_ampere.load(std::memory_order_relaxed));
+>>>>>>> pr179
     if (!area->preemtive) {
         if (Nx2DownloadTrace::g_enabled) [[unlikely]] {
             Nx2DownloadTrace::Marked(device_addr_start_aligned,
@@ -338,6 +351,7 @@ void BufferCache<P>::DownloadMemory(DAddr device_addr, u64 size) {
 
 template <class P>
 void BufferCache<P>::DownloadRangesMemory(std::span<const std::pair<DAddr, u64>> ranges) {
+<<<<<<< HEAD
     constexpr bool has_mapped = requires(Buffer& buffer) { buffer.Mapped(); };
     if constexpr (!USE_MEMORY_MAPS) {
         for (const auto& [device_addr, size] : ranges) {
@@ -421,6 +435,55 @@ void BufferCache<P>::DownloadRangesMemory(std::span<const std::pair<DAddr, u64>>
                                       download.copy.size);
             }
         }
+=======
+    struct Download {
+        BufferId buffer_id;
+        BufferCopy copy;
+    };
+    boost::container::small_vector<Download, 16> downloads;
+    u64 total_size_bytes = 0;
+    for (const auto& [range_addr, range_size] : ranges) {
+        ForEachBufferInRange(range_addr, range_size, [&](BufferId buffer_id, Buffer& buffer) {
+            const DAddr buffer_addr = buffer.CpuAddr();
+            const DAddr start = (std::max)(range_addr, buffer_addr);
+            const DAddr end = (std::min)(range_addr + range_size, buffer_addr + buffer.SizeBytes());
+            if (start >= end) {
+                return;
+            }
+            memory_tracker.ForEachDownloadRangeAndClear(
+                start, end - start, [&](u64 device_addr_out, u64 out_size) {
+                    gpu_modified_ranges.ForEachInRange(
+                        device_addr_out, out_size, [&](DAddr lower, DAddr upper) {
+                            downloads.push_back({buffer_id, BufferCopy{
+                                                                .src_offset = lower - buffer_addr,
+                                                                .dst_offset = total_size_bytes,
+                                                                .size = upper - lower,
+                                                            }});
+                            total_size_bytes += Common::AlignUp(upper - lower, 64);
+                        });
+                    ClearDownload(device_addr_out, out_size);
+                    gpu_modified_ranges.Subtract(device_addr_out, out_size);
+                });
+        });
+    }
+    if (total_size_bytes == 0) {
+        return;
+    }
+    auto download_staging = runtime.DownloadStagingBuffer(total_size_bytes);
+    for (Download& download : downloads) {
+        download.copy.dst_offset += download_staging.offset;
+        Buffer& buffer = slot_buffers[download.buffer_id];
+        buffer.MarkUsage(download.copy.src_offset, download.copy.size);
+        runtime.CopyBuffer(download_staging.buffer, buffer, std::span{&download.copy, 1}, true);
+    }
+    runtime.Finish();
+    const u8* const mapped_memory = download_staging.mapped_span.data();
+    for (const Download& download : downloads) {
+        const DAddr device_addr = slot_buffers[download.buffer_id].CpuAddr() + download.copy.src_offset;
+        device_memory.WriteBlockUnsafe(
+            device_addr, mapped_memory + (download.copy.dst_offset - download_staging.offset),
+            download.copy.size);
+>>>>>>> pr179
     }
 }
 
