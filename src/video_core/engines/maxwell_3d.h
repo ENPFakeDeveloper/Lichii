@@ -3402,8 +3402,6 @@ private:
     void FrontRunMacro(Core::System& system, VideoCommon::GpuSplit& split, FrontState& state);
     void FrontTrackInstanceLoop(FrontState& state, u32 method, u32 value);
     bool FrontSkipsLoopWrite(FrontState& state, u32 method, u32 value, bool shadow_kept);
-}
-
     void FrontNoteMemoryWrite(VideoCommon::GpuSplit& split, FrontState& state, u32 method,
                               const u32* words, u32 count);
     /// FrontDmaRead without draining the back, when the words can be known: false otherwise.
